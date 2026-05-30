@@ -84,7 +84,8 @@ export const InfiniteCanvas: React.FC = () => {
         return;
       }
 
-      if (activePluginId === 'freehand' && e.evt.button === 0) {
+      // Only start freehand drawing on empty canvas area
+      if (activePluginId === 'freehand' && e.evt.button === 0 && e.target === e.target.getStage()) {
         const stage = e.target.getStage();
         const pointer = stage?.getPointerPosition();
         if (pointer) {
@@ -96,8 +97,8 @@ export const InfiniteCanvas: React.FC = () => {
         return;
       }
 
-      // Click on empty canvas = deselect
-      if (e.target === e.target.getStage()) {
+      // Click on empty canvas = deselect (only if not shift-clicking for multi-select)
+      if (e.target === e.target.getStage() && !e.evt.shiftKey) {
         useCanvasStore.getState().setSelection([], []);
       }
     },

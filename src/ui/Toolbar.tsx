@@ -128,13 +128,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             + Diamond
           </button>
           <button onClick={handleConnect} disabled={selectedNodeIds.length < 2}
-            className="px-2 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-40">
-            Connect
+            className="px-2 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-40"
+            title="Select 2 nodes (Shift+Click) then connect">
+            Connect ({selectedNodeIds.length}/2)
           </button>
           <button onClick={handleDeleteNode} disabled={selectedNodeIds.length === 0}
             className="px-2 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 disabled:opacity-40">
             Delete
           </button>
+          {selectedNodeIds.length < 2 && (
+            <span className="text-xs text-gray-400 ml-1">Shift+Click to multi-select</span>
+          )}
         </div>
       )}
 

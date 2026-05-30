@@ -73,6 +73,34 @@ export default function App() {
     return () => { offStart(); offEnd(); };
   }, [freehandPlugin]);
 
+  // Wire drag events: relayout mind map, reroute flowchart edges
+  useEffect(() => {
+    const offMindmap = eventBus.on('mindmap:node-moved', () => {
+      mindMapPlugin.relayout();
+    });
+    const offFlowchart = eventBus.on('flowchart:node-moved', () => {
+      flowchartPlugin.rerouteEdges();
+    });
+    return () => { offMindmap(); offFlowchart(); };
+  }, [mindMapPlugin, flowchartPlugin]);
+
+  // When markdown editor locates a node, pan canvas to show it
+  useEffect(() => {
+    const off = eventBus.on('markdown:node-located', (payload: any) => {
+      const node = useCanvasStore.getState().getNode(payload.nodeId);
+      if (!node) return;
+      const viewport = useCanvasStore.getState().document.viewport;
+      const containerEl = document.querySelector('.flex-1.overflow-hidden.bg-gray-100');
+      const cw = containerEl ? containerEl.clientWidth : 800;
+      const ch = containerEl ? containerEl.clientHeight : 600;
+      // Center the node in the visible canvas area
+      const targetX = cw / 2 - (node.position.x + node.size.width / 2) * viewport.zoom;
+      const targetY = ch / 2 - (node.position.y + node.size.height / 2) * viewport.zoom;
+      useCanvasStore.getState().setViewport({ x: targetX, y: targetY, zoom: viewport.zoom });
+    });
+    return off;
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;

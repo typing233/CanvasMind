@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view';
+import { EditorView, keymap, lineNumbers, highlightActiveLine, ViewUpdate } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { markdown } from '@codemirror/lang-markdown';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
@@ -11,6 +11,7 @@ import { ICommand } from '../core/commands/Command';
 import { CanvasNode, CanvasEdge } from '../core/data-model/types';
 import { computeTreeLayout } from '../plugins/mind-map/tree-layout';
 import { nanoid } from 'nanoid';
+import { eventBus } from '../core/event-bus/EventBus';
 
 class BatchAddNodesCommand implements ICommand {
   id = nanoid();
@@ -50,12 +51,49 @@ export const MarkdownPanel: React.FC = () => {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [syncMap, setSyncMap] = useState<Map<string, { lineStart: number; lineEnd: number }>>(new Map());
+  const syncMapRef = useRef<Map<string, { lineStart: number; lineEnd: number }>>(new Map());
+  const ignoreNextCursor = useRef(false);
 
   const selectedNodeIds = useCanvasStore(s => s.selectedNodeIds);
   const nodes = useCanvasStore(s => s.document.nodes);
 
+  // Keep ref in sync with state for use in CodeMirror callbacks
+  useEffect(() => {
+    syncMapRef.current = syncMap;
+  }, [syncMap]);
+
   useEffect(() => {
     if (!editorRef.current) return;
+
+    const cursorListener = EditorView.updateListener.of((update: ViewUpdate) => {
+      if (!update.selectionSet) return;
+      if (ignoreNextCursor.current) {
+        ignoreNextCursor.current = false;
+        return;
+      }
+
+      const currentMap = syncMapRef.current;
+      if (currentMap.size === 0) return;
+
+      const pos = update.state.selection.main.head;
+      const lineNum = update.state.doc.lineAt(pos).number - 1; // 0-based
+
+      // Find the node whose line range contains this line
+      let matchedNodeId: string | null = null;
+      for (const [nodeId, mapping] of currentMap.entries()) {
+        if (lineNum >= mapping.lineStart && lineNum <= mapping.lineEnd) {
+          matchedNodeId = nodeId;
+        }
+      }
+
+      if (matchedNodeId) {
+        const currentSelection = useCanvasStore.getState().selectedNodeIds;
+        if (currentSelection.length !== 1 || currentSelection[0] !== matchedNodeId) {
+          useCanvasStore.getState().setSelection([matchedNodeId], []);
+          eventBus.emit('markdown:node-located', { nodeId: matchedNodeId });
+        }
+      }
+    });
 
     const state = EditorState.create({
       doc: defaultMarkdown,
@@ -66,12 +104,12 @@ export const MarkdownPanel: React.FC = () => {
         markdown(),
         syntaxHighlighting(defaultHighlightStyle),
         keymap.of([...defaultKeymap, ...historyKeymap]),
+        cursorListener,
         EditorView.theme({
           '&': { height: '100%', fontSize: '14px' },
           '.cm-content': { fontFamily: 'monospace', padding: '12px' },
           '.cm-gutters': { backgroundColor: '#f8fafc', borderRight: '1px solid #e2e8f0' },
           '.cm-activeLine': { backgroundColor: '#f1f5f9' },
-          '.cm-highlighted-line': { backgroundColor: '#DBEAFE !important' },
         }),
       ],
     });
@@ -82,7 +120,7 @@ export const MarkdownPanel: React.FC = () => {
     return () => view.destroy();
   }, []);
 
-  // Highlight markdown line when a node is selected
+  // Forward direction: node selected on canvas → highlight line in editor
   useEffect(() => {
     const view = viewRef.current;
     if (!view || selectedNodeIds.length === 0) return;
@@ -91,7 +129,12 @@ export const MarkdownPanel: React.FC = () => {
     const mapping = syncMap.get(nodeId);
     if (!mapping) return;
 
-    const line = view.state.doc.line(mapping.lineStart + 1);
+    const lineCount = view.state.doc.lines;
+    const targetLine = mapping.lineStart + 1; // 1-based
+    if (targetLine < 1 || targetLine > lineCount) return;
+
+    const line = view.state.doc.line(targetLine);
+    ignoreNextCursor.current = true;
     view.dispatch({
       selection: { anchor: line.from },
       scrollIntoView: true,
@@ -106,11 +149,21 @@ export const MarkdownPanel: React.FC = () => {
 
     if (result.nodes.length === 0) return;
 
+    // Clear existing mind map nodes first
+    const existingNodes = Object.values(useCanvasStore.getState().document.nodes);
+    const existingEdges = Object.values(useCanvasStore.getState().document.edges);
+    existingNodes.filter(n => n.type === 'mindmap').forEach(n => {
+      useCanvasStore.getState().removeNode(n.id);
+    });
+    existingEdges.filter(e => e.type === 'mindmap-branch').forEach(e => {
+      useCanvasStore.getState().removeEdge(e.id);
+    });
+
     // Build node map for layout calculation
     const nodeMap: Record<string, CanvasNode> = {};
     result.nodes.forEach(n => { nodeMap[n.id] = n; });
 
-    // Find root
+    // Find root and compute layout
     const root = result.nodes.find(n => !n.parentId);
     if (root) {
       const positions = computeTreeLayout(root.id, nodeMap);
@@ -138,6 +191,21 @@ export const MarkdownPanel: React.FC = () => {
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: md },
       });
+
+      // Rebuild sync map from current canvas nodes
+      const newSyncMap = new Map<string, { lineStart: number; lineEnd: number }>();
+      const lines = md.split('\n');
+      let lineIdx = 0;
+
+      function walkNode(nodeId: string) {
+        const node = nodes[nodeId];
+        if (!node) return;
+        newSyncMap.set(nodeId, { lineStart: lineIdx, lineEnd: lineIdx });
+        lineIdx++;
+        (node.children || []).forEach(childId => walkNode(childId));
+      }
+      walkNode(root.id);
+      setSyncMap(newSyncMap);
     }
   }, [nodes]);
 
