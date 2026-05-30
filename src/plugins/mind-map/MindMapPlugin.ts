@@ -189,7 +189,12 @@ export class MindMapPlugin implements IPlugin {
     const root = mindmapNodes.find(n => !n.parentId);
     if (!root) return;
 
-    const positions = computeTreeLayout(root.id, nodes);
+    // Use root's current position as layout origin so the tree stays where the user placed it
+    const origin = root.position.x === 0 && root.position.y === 0
+      ? { x: 100, y: 100 }
+      : root.position;
+
+    const positions = computeTreeLayout(root.id, nodes, origin);
     positions.forEach((pos, id) => {
       this.ctx.store.updateNode(id, { position: pos });
     });

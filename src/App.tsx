@@ -73,16 +73,13 @@ export default function App() {
     return () => { offStart(); offEnd(); };
   }, [freehandPlugin]);
 
-  // Wire drag events: relayout mind map, reroute flowchart edges
+  // Wire drag events: reroute flowchart edges on move (mind map keeps user position)
   useEffect(() => {
-    const offMindmap = eventBus.on('mindmap:node-moved', () => {
-      mindMapPlugin.relayout();
-    });
     const offFlowchart = eventBus.on('flowchart:node-moved', () => {
       flowchartPlugin.rerouteEdges();
     });
-    return () => { offMindmap(); offFlowchart(); };
-  }, [mindMapPlugin, flowchartPlugin]);
+    return () => { offFlowchart(); };
+  }, [flowchartPlugin]);
 
   // When markdown editor locates a node, pan canvas to show it
   useEffect(() => {
