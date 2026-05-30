@@ -19,6 +19,9 @@ export const StylePanel: React.FC = () => {
   const capturedNodeStyle = useRef<NodeStyle | null>(null);
   const capturedEdgeStyle = useRef<EdgeStyle | null>(null);
   const capturedFreehandData = useRef<Record<string, unknown> | null>(null);
+  const accumulatedNodePatch = useRef<Partial<NodeStyle>>({});
+  const accumulatedEdgePatch = useRef<Partial<EdgeStyle>>({});
+  const accumulatedFreehandPatch = useRef<Record<string, unknown>>({});
   const lastEditTarget = useRef<string | null>(null);
 
   const selectedNode = selectedNodeIds.length > 0 ? nodes[selectedNodeIds[0]] : null;
@@ -29,21 +32,23 @@ export const StylePanel: React.FC = () => {
   const updateNodeStyle = useCallback((patch: Partial<NodeStyle>) => {
     if (!selectedNode) return;
 
-    // Capture old style at the start of an editing session
     if (lastEditTarget.current !== `node-style-${selectedNode.id}`) {
       capturedNodeStyle.current = { ...selectedNode.style };
+      accumulatedNodePatch.current = {};
       lastEditTarget.current = `node-style-${selectedNode.id}`;
     }
 
-    // Live preview
+    accumulatedNodePatch.current = { ...accumulatedNodePatch.current, ...patch };
+
     store.updateNode(selectedNode.id, { style: { ...selectedNode.style, ...patch } });
 
-    // Debounced command for undo
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      const cmd = new UpdateNodeStyleCommand(store, selectedNode.id, patch, capturedNodeStyle.current!);
+      const fullPatch = { ...accumulatedNodePatch.current };
+      const cmd = new UpdateNodeStyleCommand(store, selectedNode.id, fullPatch, capturedNodeStyle.current!);
       commandHistory.execute(cmd);
       capturedNodeStyle.current = null;
+      accumulatedNodePatch.current = {};
       lastEditTarget.current = null;
     }, 500);
   }, [selectedNode, store]);
@@ -53,16 +58,21 @@ export const StylePanel: React.FC = () => {
 
     if (lastEditTarget.current !== `edge-style-${selectedEdge.id}`) {
       capturedEdgeStyle.current = { ...selectedEdge.style };
+      accumulatedEdgePatch.current = {};
       lastEditTarget.current = `edge-style-${selectedEdge.id}`;
     }
+
+    accumulatedEdgePatch.current = { ...accumulatedEdgePatch.current, ...patch };
 
     store.updateEdge(selectedEdge.id, { style: { ...selectedEdge.style, ...patch } });
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      const cmd = new UpdateEdgeStyleCommand(store, selectedEdge.id, patch, capturedEdgeStyle.current!);
+      const fullPatch = { ...accumulatedEdgePatch.current };
+      const cmd = new UpdateEdgeStyleCommand(store, selectedEdge.id, fullPatch, capturedEdgeStyle.current!);
       commandHistory.execute(cmd);
       capturedEdgeStyle.current = null;
+      accumulatedEdgePatch.current = {};
       lastEditTarget.current = null;
     }, 500);
   }, [selectedEdge, store]);
@@ -72,16 +82,21 @@ export const StylePanel: React.FC = () => {
 
     if (lastEditTarget.current !== `freehand-${selectedNode.id}`) {
       capturedFreehandData.current = { ...selectedNode.data };
+      accumulatedFreehandPatch.current = {};
       lastEditTarget.current = `freehand-${selectedNode.id}`;
     }
+
+    accumulatedFreehandPatch.current = { ...accumulatedFreehandPatch.current, ...patch };
 
     store.updateNode(selectedNode.id, { data: { ...selectedNode.data, ...patch } });
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      const cmd = new UpdateFreehandStyleCommand(store, selectedNode.id, patch, capturedFreehandData.current!);
+      const fullPatch = { ...accumulatedFreehandPatch.current };
+      const cmd = new UpdateFreehandStyleCommand(store, selectedNode.id, fullPatch, capturedFreehandData.current!);
       commandHistory.execute(cmd);
       capturedFreehandData.current = null;
+      accumulatedFreehandPatch.current = {};
       lastEditTarget.current = null;
     }, 500);
   }, [selectedNode, store]);
