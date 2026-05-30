@@ -14,7 +14,12 @@ export const StylePanel: React.FC = () => {
   const selectedEdgeIds = useCanvasStore(s => s.selectedEdgeIds);
   const nodes = useCanvasStore(s => s.document.nodes);
   const edges = useCanvasStore(s => s.document.edges);
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const capturedNodeStyle = useRef<NodeStyle | null>(null);
+  const capturedEdgeStyle = useRef<EdgeStyle | null>(null);
+  const capturedFreehandData = useRef<Record<string, unknown> | null>(null);
+  const lastEditTarget = useRef<string | null>(null);
 
   const selectedNode = selectedNodeIds.length > 0 ? nodes[selectedNodeIds[0]] : null;
   const selectedEdge = selectedEdgeIds.length > 0 ? edges[selectedEdgeIds[0]] : null;
@@ -23,32 +28,62 @@ export const StylePanel: React.FC = () => {
 
   const updateNodeStyle = useCallback((patch: Partial<NodeStyle>) => {
     if (!selectedNode) return;
+
+    // Capture old style at the start of an editing session
+    if (lastEditTarget.current !== `node-style-${selectedNode.id}`) {
+      capturedNodeStyle.current = { ...selectedNode.style };
+      lastEditTarget.current = `node-style-${selectedNode.id}`;
+    }
+
+    // Live preview
+    store.updateNode(selectedNode.id, { style: { ...selectedNode.style, ...patch } });
+
+    // Debounced command for undo
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      const cmd = new UpdateNodeStyleCommand(store, selectedNode.id, patch);
+      const cmd = new UpdateNodeStyleCommand(store, selectedNode.id, patch, capturedNodeStyle.current!);
       commandHistory.execute(cmd);
-    }, 300);
-    store.updateNode(selectedNode.id, { style: { ...selectedNode.style, ...patch } });
+      capturedNodeStyle.current = null;
+      lastEditTarget.current = null;
+    }, 500);
   }, [selectedNode, store]);
 
   const updateEdgeStyle = useCallback((patch: Partial<EdgeStyle>) => {
     if (!selectedEdge) return;
+
+    if (lastEditTarget.current !== `edge-style-${selectedEdge.id}`) {
+      capturedEdgeStyle.current = { ...selectedEdge.style };
+      lastEditTarget.current = `edge-style-${selectedEdge.id}`;
+    }
+
+    store.updateEdge(selectedEdge.id, { style: { ...selectedEdge.style, ...patch } });
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      const cmd = new UpdateEdgeStyleCommand(store, selectedEdge.id, patch);
+      const cmd = new UpdateEdgeStyleCommand(store, selectedEdge.id, patch, capturedEdgeStyle.current!);
       commandHistory.execute(cmd);
-    }, 300);
-    store.updateEdge(selectedEdge.id, { style: { ...selectedEdge.style, ...patch } });
+      capturedEdgeStyle.current = null;
+      lastEditTarget.current = null;
+    }, 500);
   }, [selectedEdge, store]);
 
   const updateFreehandData = useCallback((patch: Record<string, unknown>) => {
     if (!selectedNode || selectedNode.type !== 'freehand-path') return;
+
+    if (lastEditTarget.current !== `freehand-${selectedNode.id}`) {
+      capturedFreehandData.current = { ...selectedNode.data };
+      lastEditTarget.current = `freehand-${selectedNode.id}`;
+    }
+
+    store.updateNode(selectedNode.id, { data: { ...selectedNode.data, ...patch } });
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      const cmd = new UpdateFreehandStyleCommand(store, selectedNode.id, patch);
+      const cmd = new UpdateFreehandStyleCommand(store, selectedNode.id, patch, capturedFreehandData.current!);
       commandHistory.execute(cmd);
-    }, 300);
-    store.updateNode(selectedNode.id, { data: { ...selectedNode.data, ...patch } });
+      capturedFreehandData.current = null;
+      lastEditTarget.current = null;
+    }, 500);
   }, [selectedNode, store]);
 
   if (!selectedNode && !selectedEdge) return null;
@@ -57,6 +92,7 @@ export const StylePanel: React.FC = () => {
     <div className="absolute right-2 top-14 w-56 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-50">
       <h3 className="text-sm font-semibold text-gray-700 mb-3">{t('style.title')}</h3>
 
+      {/* Regular nodes (mindmap, flowchart, sticky-note, shapes) */}
       {selectedNode && selectedNode.type !== 'freehand-path' && (
         <div className="space-y-2.5">
           <ColorPicker label="style.fill" value={selectedNode.style.fill} onChange={v => updateNodeStyle({ fill: v })} />
@@ -68,6 +104,7 @@ export const StylePanel: React.FC = () => {
         </div>
       )}
 
+      {/* Freehand path */}
       {selectedNode && selectedNode.type === 'freehand-path' && (
         <div className="space-y-2.5">
           <ColorPicker label="style.stroke" value={(selectedNode.data.color as string) || '#000000'} onChange={v => updateFreehandData({ color: v })} />
@@ -75,7 +112,8 @@ export const StylePanel: React.FC = () => {
         </div>
       )}
 
-      {selectedEdge && (
+      {/* Edge style (flowchart arrows, connectors, mindmap branches) */}
+      {selectedEdge && !selectedNode && (
         <div className="space-y-2.5">
           <ColorPicker label="style.stroke" value={selectedEdge.style.stroke} onChange={v => updateEdgeStyle({ stroke: v })} />
           <SliderInput label="style.strokeWidth" value={selectedEdge.style.strokeWidth} min={1} max={10} onChange={v => updateEdgeStyle({ strokeWidth: v })} />
@@ -109,6 +147,7 @@ export const StylePanel: React.FC = () => {
         </div>
       )}
 
+      {/* Conversion buttons */}
       {selectedNode && (
         <div className="mt-3 pt-2 border-t border-gray-100">
           <span className="text-xs text-gray-400">{t('style.nodeType')}: {selectedNode.type}</span>

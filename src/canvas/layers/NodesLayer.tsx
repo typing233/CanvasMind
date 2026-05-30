@@ -1,19 +1,22 @@
-import React, { useMemo } from 'react';
-import { Group, Rect, Text, Line, Circle } from 'react-konva';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { Group, Rect, Text, Line, Circle, Image as KonvaImage } from 'react-konva';
 import { useCanvasStore } from '../../core/data-model/store';
 import { CanvasNode } from '../../core/data-model/types';
 import { eventBus } from '../../core/event-bus/EventBus';
 import { getVisibleNodeIds } from '../culling/ViewportCuller';
+import { DragReorderHandler, DropTarget } from '../../plugins/mind-map/DragReorderHandler';
 
 interface ShapeProps {
   node: CanvasNode;
   isSelected: boolean;
   onSelect: (e: any) => void;
   onDragEnd: (e: any) => void;
+  onDragMove?: (e: any) => void;
+  onDragStart?: (e: any) => void;
   draggable: boolean;
 }
 
-const MindMapNodeShape: React.FC<ShapeProps> = React.memo(({ node, isSelected, onSelect, onDragEnd, draggable }) => {
+const MindMapNodeShape: React.FC<ShapeProps> = React.memo(({ node, isSelected, onSelect, onDragEnd, onDragMove, onDragStart, draggable }) => {
   const text = (node.data.text as string) || '';
   return (
     <Group
@@ -22,6 +25,8 @@ const MindMapNodeShape: React.FC<ShapeProps> = React.memo(({ node, isSelected, o
       draggable={draggable}
       onClick={onSelect}
       onTap={onSelect}
+      onDragStart={onDragStart}
+      onDragMove={onDragMove}
       onDragEnd={onDragEnd}
     >
       <Rect
@@ -185,6 +190,16 @@ const StickyNoteShape: React.FC<ShapeProps> = React.memo(({ node, isSelected, on
 });
 
 const ImageNodeShape: React.FC<ShapeProps> = React.memo(({ node, isSelected, onSelect, onDragEnd, draggable }) => {
+  const [image, setImage] = useState<HTMLImageElement | null>(null);
+  const src = node.data.src as string;
+
+  useEffect(() => {
+    if (!src) return;
+    const img = new window.Image();
+    img.onload = () => setImage(img);
+    img.src = src;
+  }, [src]);
+
   return (
     <Group
       x={node.position.x}
@@ -201,14 +216,23 @@ const ImageNodeShape: React.FC<ShapeProps> = React.memo(({ node, isSelected, onS
         stroke={isSelected ? '#3B82F6' : '#D1D5DB'}
         strokeWidth={isSelected ? 2 : 1}
       />
-      <Text
-        text="📷"
-        width={node.size.width}
-        height={node.size.height}
-        align="center"
-        verticalAlign="middle"
-        fontSize={24}
-      />
+      {image ? (
+        <KonvaImage
+          image={image}
+          width={node.size.width}
+          height={node.size.height}
+        />
+      ) : (
+        <Text
+          text="Loading..."
+          width={node.size.width}
+          height={node.size.height}
+          align="center"
+          verticalAlign="middle"
+          fontSize={12}
+          fill="#9CA3AF"
+        />
+      )}
     </Group>
   );
 });
@@ -281,6 +305,8 @@ const GeometryShape: React.FC<ShapeProps> = React.memo(({ node, isSelected, onSe
 // Registry for dynamic node types from plugins
 export const nodeTypeRegistry = new Map<string, React.FC<ShapeProps>>();
 
+const dragReorderHandler = new DragReorderHandler();
+
 export const NodesLayer: React.FC<{ screenWidth?: number; screenHeight?: number }> = ({ screenWidth = 1200, screenHeight = 800 }) => {
   const nodes = useCanvasStore(s => s.document.nodes);
   const selectedNodeIds = useCanvasStore(s => s.selectedNodeIds);
@@ -288,6 +314,7 @@ export const NodesLayer: React.FC<{ screenWidth?: number; screenHeight?: number 
   const updateNode = useCanvasStore(s => s.updateNode);
   const activePluginId = useCanvasStore(s => s.activePluginId);
   const viewport = useCanvasStore(s => s.document.viewport);
+  const [dropIndicator, setDropIndicator] = useState<DropTarget | null>(null);
 
   const visibleNodeIds = useMemo(
     () => getVisibleNodeIds(nodes, viewport, { width: screenWidth, height: screenHeight }),
@@ -312,16 +339,41 @@ export const NodesLayer: React.FC<{ screenWidth?: number; screenHeight?: number 
     }
   };
 
+  const handleDragStart = useCallback((nodeId: string) => {
+    const node = nodes[nodeId];
+    if (node?.type === 'mindmap') {
+      dragReorderHandler.startDrag(nodeId);
+    }
+  }, [nodes]);
+
+  const handleDragMove = useCallback((nodeId: string, e: any) => {
+    const node = nodes[nodeId];
+    if (node?.type === 'mindmap') {
+      const pos = { x: e.target.x() + node.size.width / 2, y: e.target.y() + node.size.height / 2 };
+      const target = dragReorderHandler.updateDrag(pos);
+      setDropIndicator(target);
+    }
+  }, [nodes]);
+
   const handleDragEnd = (nodeId: string, e: any) => {
     const newX = e.target.x();
     const newY = e.target.y();
-    updateNode(nodeId, { position: { x: newX, y: newY } });
 
     const node = nodes[nodeId];
     if (node?.type === 'mindmap') {
-      eventBus.emit('mindmap:node-moved', { nodeId });
-    } else if (node?.type === 'flowchart-rect' || node?.type === 'flowchart-diamond') {
-      eventBus.emit('flowchart:node-moved', { nodeId });
+      const reparented = dragReorderHandler.endDrag();
+      setDropIndicator(null);
+      if (reparented) {
+        eventBus.emit('mindmap:relayout', {});
+      } else {
+        updateNode(nodeId, { position: { x: newX, y: newY } });
+        eventBus.emit('mindmap:node-moved', { nodeId });
+      }
+    } else {
+      updateNode(nodeId, { position: { x: newX, y: newY } });
+      if (node?.type === 'flowchart-rect' || node?.type === 'flowchart-diamond') {
+        eventBus.emit('flowchart:node-moved', { nodeId });
+      }
     }
   };
 
@@ -340,10 +392,12 @@ export const NodesLayer: React.FC<{ screenWidth?: number; screenHeight?: number 
         const draggable = isDraggable(node);
         const selectHandler = (e: any) => handleSelect(node.id, e);
         const dragEndHandler = (e: any) => handleDragEnd(node.id, e);
+        const dragMoveHandler = (e: any) => handleDragMove(node.id, e);
+        const dragStartHandler = () => handleDragStart(node.id);
 
         switch (node.type) {
           case 'mindmap':
-            return <MindMapNodeShape key={node.id} node={node} isSelected={isSelected} onSelect={selectHandler} onDragEnd={dragEndHandler} draggable={draggable} />;
+            return <MindMapNodeShape key={node.id} node={node} isSelected={isSelected} onSelect={selectHandler} onDragEnd={dragEndHandler} onDragMove={dragMoveHandler} onDragStart={dragStartHandler} draggable={draggable} />;
           case 'flowchart-rect':
             return <FlowchartRectShape key={node.id} node={node} isSelected={isSelected} onSelect={selectHandler} onDragEnd={dragEndHandler} draggable={draggable} />;
           case 'flowchart-diamond':
@@ -365,6 +419,14 @@ export const NodesLayer: React.FC<{ screenWidth?: number; screenHeight?: number 
             return null;
         }
       })}
+      {dropIndicator && (
+        <Line
+          points={[dropIndicator.indicator.x, dropIndicator.indicator.y - 2, dropIndicator.indicator.x + dropIndicator.indicator.width, dropIndicator.indicator.y - 2]}
+          stroke="#3B82F6"
+          strokeWidth={3}
+          lineCap="round"
+        />
+      )}
     </>
   );
 };

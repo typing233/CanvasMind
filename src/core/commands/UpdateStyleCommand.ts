@@ -9,25 +9,21 @@ export class UpdateNodeStyleCommand implements ICommand {
   private store: CanvasStore;
   private nodeId: NodeId;
   private newStyle: Partial<NodeStyle>;
-  private oldStyle: NodeStyle | null = null;
+  private oldStyle: NodeStyle;
 
-  constructor(store: CanvasStore, nodeId: NodeId, stylePatch: Partial<NodeStyle>) {
+  constructor(store: CanvasStore, nodeId: NodeId, stylePatch: Partial<NodeStyle>, capturedOldStyle: NodeStyle) {
     this.store = store;
     this.nodeId = nodeId;
     this.newStyle = stylePatch;
+    this.oldStyle = capturedOldStyle;
   }
 
   execute(): void {
-    const node = this.store.getNode(this.nodeId);
-    if (!node) return;
-    this.oldStyle = { ...node.style };
-    this.store.updateNode(this.nodeId, { style: { ...node.style, ...this.newStyle } });
+    this.store.updateNode(this.nodeId, { style: { ...this.oldStyle, ...this.newStyle } });
   }
 
   undo(): void {
-    if (this.oldStyle) {
-      this.store.updateNode(this.nodeId, { style: this.oldStyle });
-    }
+    this.store.updateNode(this.nodeId, { style: this.oldStyle });
   }
 }
 
@@ -37,25 +33,21 @@ export class UpdateEdgeStyleCommand implements ICommand {
   private store: CanvasStore;
   private edgeId: EdgeId;
   private newStyle: Partial<EdgeStyle>;
-  private oldStyle: EdgeStyle | null = null;
+  private oldStyle: EdgeStyle;
 
-  constructor(store: CanvasStore, edgeId: EdgeId, stylePatch: Partial<EdgeStyle>) {
+  constructor(store: CanvasStore, edgeId: EdgeId, stylePatch: Partial<EdgeStyle>, capturedOldStyle: EdgeStyle) {
     this.store = store;
     this.edgeId = edgeId;
     this.newStyle = stylePatch;
+    this.oldStyle = capturedOldStyle;
   }
 
   execute(): void {
-    const edge = this.store.getEdge(this.edgeId);
-    if (!edge) return;
-    this.oldStyle = { ...edge.style };
-    this.store.updateEdge(this.edgeId, { style: { ...edge.style, ...this.newStyle } });
+    this.store.updateEdge(this.edgeId, { style: { ...this.oldStyle, ...this.newStyle } });
   }
 
   undo(): void {
-    if (this.oldStyle) {
-      this.store.updateEdge(this.edgeId, { style: this.oldStyle });
-    }
+    this.store.updateEdge(this.edgeId, { style: this.oldStyle });
   }
 }
 
@@ -65,24 +57,20 @@ export class UpdateFreehandStyleCommand implements ICommand {
   private store: CanvasStore;
   private nodeId: NodeId;
   private newData: Record<string, unknown>;
-  private oldData: Record<string, unknown> | null = null;
+  private oldData: Record<string, unknown>;
 
-  constructor(store: CanvasStore, nodeId: NodeId, dataPatch: Record<string, unknown>) {
+  constructor(store: CanvasStore, nodeId: NodeId, dataPatch: Record<string, unknown>, capturedOldData: Record<string, unknown>) {
     this.store = store;
     this.nodeId = nodeId;
     this.newData = dataPatch;
+    this.oldData = capturedOldData;
   }
 
   execute(): void {
-    const node = this.store.getNode(this.nodeId);
-    if (!node) return;
-    this.oldData = { ...node.data };
-    this.store.updateNode(this.nodeId, { data: { ...node.data, ...this.newData } });
+    this.store.updateNode(this.nodeId, { data: { ...this.oldData, ...this.newData } });
   }
 
   undo(): void {
-    if (this.oldData) {
-      this.store.updateNode(this.nodeId, { data: this.oldData });
-    }
+    this.store.updateNode(this.nodeId, { data: this.oldData });
   }
 }

@@ -28,6 +28,7 @@ export default function App() {
   const { t, locale, setLocale } = useT();
 
   const selectedNodeIds = useCanvasStore(s => s.selectedNodeIds);
+  const selectedEdgeIds = useCanvasStore(s => s.selectedEdgeIds);
 
   const store = useCanvasStore.getState();
 
@@ -96,8 +97,11 @@ export default function App() {
     const offFlowchart = eventBus.on('flowchart:node-moved', () => {
       flowchartPlugin.rerouteEdges();
     });
-    return () => { offFlowchart(); };
-  }, [flowchartPlugin]);
+    const offRelayout = eventBus.on('mindmap:relayout', () => {
+      mindMapPlugin.relayout();
+    });
+    return () => { offFlowchart(); offRelayout(); };
+  }, [flowchartPlugin, mindMapPlugin]);
 
   useEffect(() => {
     const off = eventBus.on('markdown:node-located', (payload: any) => {
@@ -194,7 +198,7 @@ export default function App() {
       />
       <div className="flex flex-1 overflow-hidden">
         <InfiniteCanvas />
-        {selectedNodeIds.length > 0 && <StylePanel />}
+        {(selectedNodeIds.length > 0 || selectedEdgeIds.length > 0) && <StylePanel />}
         {showPanel && (
           <>
             <div

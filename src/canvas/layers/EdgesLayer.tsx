@@ -33,11 +33,15 @@ function getNodeEdgePoint(node: CanvasNode, targetCenter: { x: number; y: number
   return { x, y };
 }
 
-const MindMapBranch: React.FC<{ edge: CanvasEdge; source: CanvasNode; target: CanvasNode }> = React.memo(({
-  edge,
-  source,
-  target,
-}) => {
+interface EdgeShapeProps {
+  edge: CanvasEdge;
+  source: CanvasNode;
+  target: CanvasNode;
+  isSelected: boolean;
+  onSelect: (e: any) => void;
+}
+
+const MindMapBranch: React.FC<EdgeShapeProps> = React.memo(({ edge, source, target, isSelected, onSelect }) => {
   const sx = source.position.x + source.size.width;
   const sy = source.position.y + source.size.height / 2;
   const tx = target.position.x;
@@ -47,31 +51,36 @@ const MindMapBranch: React.FC<{ edge: CanvasEdge; source: CanvasNode; target: Ca
   return (
     <Line
       points={[sx, sy, cpx, sy, cpx, ty, tx, ty]}
-      stroke={edge.style.stroke}
-      strokeWidth={edge.style.strokeWidth}
+      stroke={isSelected ? '#3B82F6' : edge.style.stroke}
+      strokeWidth={isSelected ? edge.style.strokeWidth + 2 : edge.style.strokeWidth}
       dash={edge.style.dash}
       tension={0.4}
       lineCap="round"
+      hitStrokeWidth={12}
+      onClick={onSelect}
+      onTap={onSelect}
     />
   );
 });
 
-const FlowchartArrow: React.FC<{ edge: CanvasEdge; source: CanvasNode; target: CanvasNode }> = React.memo(({
-  edge,
-  source,
-  target,
-}) => {
+const FlowchartArrow: React.FC<EdgeShapeProps> = React.memo(({ edge, source, target, isSelected, onSelect }) => {
+  const stroke = isSelected ? '#3B82F6' : edge.style.stroke;
+  const strokeWidth = isSelected ? edge.style.strokeWidth + 2 : edge.style.strokeWidth;
+
   if (edge.waypoints && edge.waypoints.length > 0) {
     const points = edge.waypoints.flatMap(p => [p.x, p.y]);
     return (
       <Arrow
         points={points}
-        stroke={edge.style.stroke}
-        strokeWidth={edge.style.strokeWidth}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
         dash={edge.style.dash}
-        fill={edge.style.stroke}
+        fill={stroke}
         pointerLength={8}
         pointerWidth={6}
+        hitStrokeWidth={12}
+        onClick={onSelect}
+        onTap={onSelect}
       />
     );
   }
@@ -84,27 +93,28 @@ const FlowchartArrow: React.FC<{ edge: CanvasEdge; source: CanvasNode; target: C
   return (
     <Arrow
       points={[start.x, start.y, end.x, end.y]}
-      stroke={edge.style.stroke}
-      strokeWidth={edge.style.strokeWidth}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
       dash={edge.style.dash}
-      fill={edge.style.stroke}
+      fill={stroke}
       pointerLength={8}
       pointerWidth={6}
+      hitStrokeWidth={12}
+      onClick={onSelect}
+      onTap={onSelect}
     />
   );
 });
 
-const ConnectorEdge: React.FC<{ edge: CanvasEdge; source: CanvasNode; target: CanvasNode }> = React.memo(({
-  edge,
-  source,
-  target,
-}) => {
+const ConnectorEdge: React.FC<EdgeShapeProps> = React.memo(({ edge, source, target, isSelected, onSelect }) => {
   const sourceCenter = getNodeCenter(source);
   const targetCenter = getNodeCenter(target);
   const start = getNodeEdgePoint(source, targetCenter);
   const end = getNodeEdgePoint(target, sourceCenter);
 
   const connectorStyle = (edge.data as any)?.connectorStyle || 'curved';
+  const stroke = isSelected ? '#3B82F6' : edge.style.stroke;
+  const strokeWidth = isSelected ? edge.style.strokeWidth + 2 : edge.style.strokeWidth;
   let points: number[];
 
   if (connectorStyle === 'straight') {
@@ -116,19 +126,20 @@ const ConnectorEdge: React.FC<{ edge: CanvasEdge; source: CanvasNode; target: Ca
     points = [start.x, start.y, end.x, end.y];
   }
 
-  const hasArrow = edge.style.arrowEnd;
-
-  if (hasArrow) {
+  if (edge.style.arrowEnd) {
     return (
       <Arrow
         points={points}
-        stroke={edge.style.stroke}
-        strokeWidth={edge.style.strokeWidth}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
         dash={edge.style.dash}
-        fill={edge.style.stroke}
+        fill={stroke}
         tension={connectorStyle === 'curved' ? 0.3 : 0}
         pointerLength={8}
         pointerWidth={6}
+        hitStrokeWidth={12}
+        onClick={onSelect}
+        onTap={onSelect}
       />
     );
   }
@@ -136,11 +147,14 @@ const ConnectorEdge: React.FC<{ edge: CanvasEdge; source: CanvasNode; target: Ca
   return (
     <Line
       points={points}
-      stroke={edge.style.stroke}
-      strokeWidth={edge.style.strokeWidth}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
       dash={edge.style.dash}
       tension={connectorStyle === 'curved' ? 0.3 : 0}
       lineCap="round"
+      hitStrokeWidth={12}
+      onClick={onSelect}
+      onTap={onSelect}
     />
   );
 });
@@ -149,6 +163,8 @@ export const EdgesLayer: React.FC<{ screenWidth?: number; screenHeight?: number 
   const edges = useCanvasStore(s => s.document.edges);
   const nodes = useCanvasStore(s => s.document.nodes);
   const viewport = useCanvasStore(s => s.document.viewport);
+  const selectedEdgeIds = useCanvasStore(s => s.selectedEdgeIds);
+  const setSelection = useCanvasStore(s => s.setSelection);
 
   const visibleNodeIds = useMemo(
     () => getVisibleNodeIds(nodes, viewport, { width: screenWidth, height: screenHeight }),
@@ -161,20 +177,27 @@ export const EdgesLayer: React.FC<{ screenWidth?: number; screenHeight?: number 
     });
   }, [edges, visibleNodeIds]);
 
+  const handleEdgeSelect = (edgeId: string, e: any) => {
+    e.cancelBubble = true;
+    setSelection([], [edgeId]);
+  };
+
   return (
     <>
       {visibleEdges.map(edge => {
         const source = nodes[edge.sourceId];
         const target = nodes[edge.targetId];
         if (!source || !target) return null;
+        const isSelected = selectedEdgeIds.includes(edge.id);
+        const onSelect = (e: any) => handleEdgeSelect(edge.id, e);
 
         switch (edge.type) {
           case 'mindmap-branch':
-            return <MindMapBranch key={edge.id} edge={edge} source={source} target={target} />;
+            return <MindMapBranch key={edge.id} edge={edge} source={source} target={target} isSelected={isSelected} onSelect={onSelect} />;
           case 'flowchart-arrow':
-            return <FlowchartArrow key={edge.id} edge={edge} source={source} target={target} />;
+            return <FlowchartArrow key={edge.id} edge={edge} source={source} target={target} isSelected={isSelected} onSelect={onSelect} />;
           case 'connector':
-            return <ConnectorEdge key={edge.id} edge={edge} source={source} target={target} />;
+            return <ConnectorEdge key={edge.id} edge={edge} source={source} target={target} isSelected={isSelected} onSelect={onSelect} />;
           default:
             return null;
         }
