@@ -1,37 +1,58 @@
 import React, { useEffect, useMemo, useRef, useCallback, useState } from 'react';
 import { InfiniteCanvas } from './canvas/InfiniteCanvas';
 import { MarkdownPanel } from './panels/MarkdownPanel';
+import { StylePanel } from './panels/StylePanel';
 import { Toolbar } from './ui/Toolbar';
+import { PluginMarketplace } from './ui/PluginMarketplace';
 import { PluginManager } from './core/plugin-system/PluginManager';
 import { MindMapPlugin } from './plugins/mind-map/MindMapPlugin';
 import { FlowchartPlugin } from './plugins/flowchart/FlowchartPlugin';
 import { FreehandPlugin } from './plugins/freehand/FreehandPlugin';
+import { StickyNotePlugin } from './plugins/sticky-note/StickyNotePlugin';
+import { ImagePlugin } from './plugins/image/ImagePlugin';
+import { ConnectorPlugin } from './plugins/connectors/ConnectorPlugin';
+import { ShapesPlugin } from './plugins/shapes/ShapesPlugin';
+import { ExportPlugin } from './plugins/export/ExportPlugin';
 import { useCanvasStore } from './core/data-model/store';
 import { eventBus } from './core/event-bus/EventBus';
 import { commandHistory } from './core/commands/CommandHistory';
+import { useT } from './i18n';
 
 const STORAGE_KEY = 'canvasmind-document';
 
 export default function App() {
   const [panelWidth, setPanelWidth] = useState(350);
   const [showPanel, setShowPanel] = useState(true);
+  const [showPlugins, setShowPlugins] = useState(false);
   const resizing = useRef(false);
+  const { t, locale, setLocale } = useT();
+
+  const selectedNodeIds = useCanvasStore(s => s.selectedNodeIds);
 
   const store = useCanvasStore.getState();
 
   const mindMapPlugin = useMemo(() => new MindMapPlugin(), []);
   const flowchartPlugin = useMemo(() => new FlowchartPlugin(), []);
   const freehandPlugin = useMemo(() => new FreehandPlugin(), []);
+  const stickyNotePlugin = useMemo(() => new StickyNotePlugin(), []);
+  const imagePlugin = useMemo(() => new ImagePlugin(), []);
+  const connectorPlugin = useMemo(() => new ConnectorPlugin(), []);
+  const shapesPlugin = useMemo(() => new ShapesPlugin(), []);
+  const exportPlugin = useMemo(() => new ExportPlugin(), []);
 
   const pluginManager = useMemo(() => {
     const pm = new PluginManager(store, eventBus, commandHistory);
     pm.register(mindMapPlugin);
     pm.register(flowchartPlugin);
     pm.register(freehandPlugin);
+    pm.register(stickyNotePlugin);
+    pm.register(imagePlugin);
+    pm.register(connectorPlugin);
+    pm.register(shapesPlugin);
+    pm.register(exportPlugin);
     return pm;
   }, []);
 
-  // Load from localStorage on mount
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -39,15 +60,14 @@ export default function App() {
         const doc = JSON.parse(saved);
         useCanvasStore.getState().loadDocument(doc);
       }
-    } catch { /* ignore corrupt data */ }
+    } catch {}
   }, []);
 
-  // Auto-save to localStorage
   useEffect(() => {
     const unsub = useCanvasStore.subscribe(state => {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state.document));
-      } catch { /* quota exceeded */ }
+      } catch {}
     });
     return unsub;
   }, []);
@@ -56,7 +76,6 @@ export default function App() {
     pluginManager.activate('mind-map');
   }, [pluginManager]);
 
-  // Wire freehand events from canvas to plugin
   useEffect(() => {
     const offStart = eventBus.on('freehand:start', (point: any) => {
       if (freehandPlugin.isActive()) {
@@ -73,7 +92,6 @@ export default function App() {
     return () => { offStart(); offEnd(); };
   }, [freehandPlugin]);
 
-  // Wire drag events: reroute flowchart edges on move (mind map keeps user position)
   useEffect(() => {
     const offFlowchart = eventBus.on('flowchart:node-moved', () => {
       flowchartPlugin.rerouteEdges();
@@ -81,7 +99,6 @@ export default function App() {
     return () => { offFlowchart(); };
   }, [flowchartPlugin]);
 
-  // When markdown editor locates a node, pan canvas to show it
   useEffect(() => {
     const off = eventBus.on('markdown:node-located', (payload: any) => {
       const node = useCanvasStore.getState().getNode(payload.nodeId);
@@ -90,7 +107,6 @@ export default function App() {
       const containerEl = document.querySelector('.flex-1.overflow-hidden.bg-gray-100');
       const cw = containerEl ? containerEl.clientWidth : 800;
       const ch = containerEl ? containerEl.clientHeight : 600;
-      // Center the node in the visible canvas area
       const targetX = cw / 2 - (node.position.x + node.size.width / 2) * viewport.zoom;
       const targetY = ch / 2 - (node.position.y + node.size.height / 2) * viewport.zoom;
       useCanvasStore.getState().setViewport({ x: targetX, y: targetY, zoom: viewport.zoom });
@@ -126,7 +142,7 @@ export default function App() {
             mindMapPlugin.removeNode(selected[0]);
           } else if (node?.type === 'flowchart-rect' || node?.type === 'flowchart-diamond') {
             flowchartPlugin.removeNode(selected[0]);
-          } else if (node?.type === 'freehand-path') {
+          } else {
             useCanvasStore.getState().removeNode(selected[0]);
           }
           useCanvasStore.getState().setSelection([], []);
@@ -174,9 +190,11 @@ export default function App() {
         mindMapPlugin={mindMapPlugin}
         flowchartPlugin={flowchartPlugin}
         freehandPlugin={freehandPlugin}
+        onShowPlugins={() => setShowPlugins(true)}
       />
       <div className="flex flex-1 overflow-hidden">
         <InfiniteCanvas />
+        {selectedNodeIds.length > 0 && <StylePanel />}
         {showPanel && (
           <>
             <div
@@ -190,14 +208,23 @@ export default function App() {
         )}
       </div>
       <div className="flex items-center justify-between px-3 py-1 border-t border-gray-200 bg-gray-50 text-xs text-gray-500">
-        <span>CanvasMind - Plugin Whiteboard Engine</span>
-        <button
-          onClick={() => setShowPanel(!showPanel)}
-          className="px-2 py-0.5 bg-gray-200 rounded hover:bg-gray-300 transition-colors"
-        >
-          {showPanel ? 'Hide Panel' : 'Show Panel'}
-        </button>
+        <span>{t('app.title')}</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setLocale(locale === 'en' ? 'zh' : 'en')}
+            className="px-2 py-0.5 bg-gray-200 rounded hover:bg-gray-300 transition-colors"
+          >
+            {locale === 'en' ? '中文' : 'EN'}
+          </button>
+          <button
+            onClick={() => setShowPanel(!showPanel)}
+            className="px-2 py-0.5 bg-gray-200 rounded hover:bg-gray-300 transition-colors"
+          >
+            {showPanel ? t('app.hidePanel') : t('app.showPanel')}
+          </button>
+        </div>
       </div>
+      {showPlugins && <PluginMarketplace pluginManager={pluginManager} onClose={() => setShowPlugins(false)} />}
     </div>
   );
 }

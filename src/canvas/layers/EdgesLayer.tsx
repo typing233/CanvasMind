@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Arrow, Line } from 'react-konva';
 import { useCanvasStore } from '../../core/data-model/store';
 import { CanvasEdge, CanvasNode } from '../../core/data-model/types';
+import { getVisibleNodeIds } from '../culling/ViewportCuller';
 
 function getNodeCenter(node: CanvasNode) {
   return {
@@ -15,7 +16,6 @@ function getNodeEdgePoint(node: CanvasNode, targetCenter: { x: number; y: number
   const cy = node.position.y + node.size.height / 2;
   const dx = targetCenter.x - cx;
   const dy = targetCenter.y - cy;
-  const angle = Math.atan2(dy, dx);
 
   const hw = node.size.width / 2;
   const hh = node.size.height / 2;
@@ -33,7 +33,7 @@ function getNodeEdgePoint(node: CanvasNode, targetCenter: { x: number; y: number
   return { x, y };
 }
 
-const MindMapBranch: React.FC<{ edge: CanvasEdge; source: CanvasNode; target: CanvasNode }> = ({
+const MindMapBranch: React.FC<{ edge: CanvasEdge; source: CanvasNode; target: CanvasNode }> = React.memo(({
   edge,
   source,
   target,
@@ -49,13 +49,14 @@ const MindMapBranch: React.FC<{ edge: CanvasEdge; source: CanvasNode; target: Ca
       points={[sx, sy, cpx, sy, cpx, ty, tx, ty]}
       stroke={edge.style.stroke}
       strokeWidth={edge.style.strokeWidth}
+      dash={edge.style.dash}
       tension={0.4}
       lineCap="round"
     />
   );
-};
+});
 
-const FlowchartArrow: React.FC<{ edge: CanvasEdge; source: CanvasNode; target: CanvasNode }> = ({
+const FlowchartArrow: React.FC<{ edge: CanvasEdge; source: CanvasNode; target: CanvasNode }> = React.memo(({
   edge,
   source,
   target,
@@ -67,6 +68,7 @@ const FlowchartArrow: React.FC<{ edge: CanvasEdge; source: CanvasNode; target: C
         points={points}
         stroke={edge.style.stroke}
         strokeWidth={edge.style.strokeWidth}
+        dash={edge.style.dash}
         fill={edge.style.stroke}
         pointerLength={8}
         pointerWidth={6}
@@ -84,20 +86,84 @@ const FlowchartArrow: React.FC<{ edge: CanvasEdge; source: CanvasNode; target: C
       points={[start.x, start.y, end.x, end.y]}
       stroke={edge.style.stroke}
       strokeWidth={edge.style.strokeWidth}
+      dash={edge.style.dash}
       fill={edge.style.stroke}
       pointerLength={8}
       pointerWidth={6}
     />
   );
-};
+});
 
-export const EdgesLayer: React.FC = () => {
+const ConnectorEdge: React.FC<{ edge: CanvasEdge; source: CanvasNode; target: CanvasNode }> = React.memo(({
+  edge,
+  source,
+  target,
+}) => {
+  const sourceCenter = getNodeCenter(source);
+  const targetCenter = getNodeCenter(target);
+  const start = getNodeEdgePoint(source, targetCenter);
+  const end = getNodeEdgePoint(target, sourceCenter);
+
+  const connectorStyle = (edge.data as any)?.connectorStyle || 'curved';
+  let points: number[];
+
+  if (connectorStyle === 'straight') {
+    points = [start.x, start.y, end.x, end.y];
+  } else if (connectorStyle === 'stepped') {
+    const midX = (start.x + end.x) / 2;
+    points = [start.x, start.y, midX, start.y, midX, end.y, end.x, end.y];
+  } else {
+    points = [start.x, start.y, end.x, end.y];
+  }
+
+  const hasArrow = edge.style.arrowEnd;
+
+  if (hasArrow) {
+    return (
+      <Arrow
+        points={points}
+        stroke={edge.style.stroke}
+        strokeWidth={edge.style.strokeWidth}
+        dash={edge.style.dash}
+        fill={edge.style.stroke}
+        tension={connectorStyle === 'curved' ? 0.3 : 0}
+        pointerLength={8}
+        pointerWidth={6}
+      />
+    );
+  }
+
+  return (
+    <Line
+      points={points}
+      stroke={edge.style.stroke}
+      strokeWidth={edge.style.strokeWidth}
+      dash={edge.style.dash}
+      tension={connectorStyle === 'curved' ? 0.3 : 0}
+      lineCap="round"
+    />
+  );
+});
+
+export const EdgesLayer: React.FC<{ screenWidth?: number; screenHeight?: number }> = ({ screenWidth = 1200, screenHeight = 800 }) => {
   const edges = useCanvasStore(s => s.document.edges);
   const nodes = useCanvasStore(s => s.document.nodes);
+  const viewport = useCanvasStore(s => s.document.viewport);
+
+  const visibleNodeIds = useMemo(
+    () => getVisibleNodeIds(nodes, viewport, { width: screenWidth, height: screenHeight }),
+    [nodes, viewport, screenWidth, screenHeight]
+  );
+
+  const visibleEdges = useMemo(() => {
+    return Object.values(edges).filter(edge => {
+      return visibleNodeIds.has(edge.sourceId) || visibleNodeIds.has(edge.targetId);
+    });
+  }, [edges, visibleNodeIds]);
 
   return (
     <>
-      {Object.values(edges).map(edge => {
+      {visibleEdges.map(edge => {
         const source = nodes[edge.sourceId];
         const target = nodes[edge.targetId];
         if (!source || !target) return null;
@@ -107,6 +173,8 @@ export const EdgesLayer: React.FC = () => {
             return <MindMapBranch key={edge.id} edge={edge} source={source} target={target} />;
           case 'flowchart-arrow':
             return <FlowchartArrow key={edge.id} edge={edge} source={source} target={target} />;
+          case 'connector':
+            return <ConnectorEdge key={edge.id} edge={edge} source={source} target={target} />;
           default:
             return null;
         }

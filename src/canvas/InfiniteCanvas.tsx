@@ -165,8 +165,8 @@ export const InfiniteCanvas: React.FC = () => {
         onMouseUp={handleMouseUp}
       >
         <Layer>
-          <EdgesLayer />
-          <NodesLayer />
+          <EdgesLayer screenWidth={dimensions.width} screenHeight={dimensions.height} />
+          <NodesLayer screenWidth={dimensions.width} screenHeight={dimensions.height} />
           {drawingPoints.length >= 4 && (
             <Line
               points={drawingPoints}

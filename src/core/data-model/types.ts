@@ -30,7 +30,7 @@ export interface EdgeStyle {
 
 export interface CanvasNode {
   id: NodeId;
-  type: 'mindmap' | 'flowchart-rect' | 'flowchart-diamond' | 'freehand-path';
+  type: 'mindmap' | 'flowchart-rect' | 'flowchart-diamond' | 'freehand-path' | 'sticky-note' | 'image' | string;
   position: Point;
   size: Size;
   data: Record<string, unknown>;
@@ -42,12 +42,13 @@ export interface CanvasNode {
 
 export interface CanvasEdge {
   id: EdgeId;
-  type: 'mindmap-branch' | 'flowchart-arrow';
+  type: 'mindmap-branch' | 'flowchart-arrow' | 'connector' | string;
   sourceId: NodeId;
   targetId: NodeId;
   waypoints?: Point[];
   style: EdgeStyle;
   label?: string;
+  data?: Record<string, unknown>;
 }
 
 export interface CanvasDocument {

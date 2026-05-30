@@ -6,12 +6,14 @@ import { MindMapPlugin } from '../plugins/mind-map/MindMapPlugin';
 import { FlowchartPlugin } from '../plugins/flowchart/FlowchartPlugin';
 import { FreehandPlugin } from '../plugins/freehand/FreehandPlugin';
 import { screenToCanvas } from '../core/viewport/ViewportManager';
+import { useT } from '../i18n';
 
 interface ToolbarProps {
   pluginManager: PluginManager;
   mindMapPlugin: MindMapPlugin;
   flowchartPlugin: FlowchartPlugin;
   freehandPlugin: FreehandPlugin;
+  onShowPlugins: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -19,11 +21,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   mindMapPlugin,
   flowchartPlugin,
   freehandPlugin,
+  onShowPlugins,
 }) => {
   const activePluginId = useCanvasStore(s => s.activePluginId);
   const selectedNodeIds = useCanvasStore(s => s.selectedNodeIds);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  const { t } = useT();
 
   React.useEffect(() => {
     const unsub = commandHistory.subscribe(() => {
@@ -56,6 +60,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         mindMapPlugin.removeNode(selectedNodeIds[0]);
       } else if (node.type === 'flowchart-rect' || node.type === 'flowchart-diamond') {
         flowchartPlugin.removeNode(selectedNodeIds[0]);
+      } else {
+        useCanvasStore.getState().removeNode(selectedNodeIds[0]);
       }
       useCanvasStore.getState().setSelection([], []);
     }
@@ -79,15 +85,16 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     }
   };
 
+  const toolbarContributions = pluginManager.getToolbarContributions();
+
   const modes = [
-    { id: 'mind-map', label: 'Mind Map', icon: '🧠' },
-    { id: 'flowchart', label: 'Flowchart', icon: '📊' },
-    { id: 'freehand', label: 'Freehand', icon: '✏️' },
+    { id: 'mind-map', label: t('toolbar.mindMap'), icon: '🧠' },
+    { id: 'flowchart', label: t('toolbar.flowchart'), icon: '📊' },
+    { id: 'freehand', label: t('toolbar.freehand'), icon: '✏️' },
   ];
 
   return (
     <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-200 bg-white shadow-sm">
-      {/* Mode switches */}
       <div className="flex items-center gap-1 mr-4">
         {modes.map(mode => (
           <button
@@ -106,15 +113,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       <div className="w-px h-6 bg-gray-300 mx-2" />
 
-      {/* Context tools */}
       {activePluginId === 'mind-map' && (
         <div className="flex items-center gap-1">
           <button onClick={handleAddChild} className="px-2 py-1 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200">
-            + Node
+            {t('toolbar.addNode')}
           </button>
           <button onClick={handleDeleteNode} disabled={selectedNodeIds.length === 0}
             className="px-2 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 disabled:opacity-40">
-            Delete
+            {t('toolbar.delete')}
           </button>
         </div>
       )}
@@ -122,36 +128,35 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       {activePluginId === 'flowchart' && (
         <div className="flex items-center gap-1">
           <button onClick={handleAddRect} className="px-2 py-1 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200">
-            + Rect
+            {t('toolbar.addRect')}
           </button>
           <button onClick={handleAddDiamond} className="px-2 py-1 text-sm bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200">
-            + Diamond
+            {t('toolbar.addDiamond')}
           </button>
           <button onClick={handleConnect} disabled={selectedNodeIds.length < 2}
-            className="px-2 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-40"
-            title="Select 2 nodes (Shift+Click) then connect">
-            Connect ({selectedNodeIds.length}/2)
+            className="px-2 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-40">
+            {t('toolbar.connect')} ({selectedNodeIds.length}/2)
           </button>
           <button onClick={handleDeleteNode} disabled={selectedNodeIds.length === 0}
             className="px-2 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200 disabled:opacity-40">
-            Delete
+            {t('toolbar.delete')}
           </button>
           {selectedNodeIds.length < 2 && (
-            <span className="text-xs text-gray-400 ml-1">Shift+Click to multi-select</span>
+            <span className="text-xs text-gray-400 ml-1">{t('toolbar.multiSelectHint')}</span>
           )}
         </div>
       )}
 
       {activePluginId === 'freehand' && (
         <div className="flex items-center gap-1">
-          <label className="text-xs text-gray-500 mr-1">Color:</label>
+          <label className="text-xs text-gray-500 mr-1">{t('toolbar.color')}</label>
           <input
             type="color"
             value={freehandPlugin.color}
             onChange={e => { freehandPlugin.color = e.target.value; }}
             className="w-6 h-6 border border-gray-300 rounded cursor-pointer"
           />
-          <label className="text-xs text-gray-500 ml-2 mr-1">Size:</label>
+          <label className="text-xs text-gray-500 ml-2 mr-1">{t('toolbar.size')}</label>
           <input
             type="range"
             min="1"
@@ -163,19 +168,43 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
       )}
 
+      {toolbarContributions.length > 0 && (
+        <>
+          <div className="w-px h-6 bg-gray-300 mx-2" />
+          <div className="flex items-center gap-1">
+            {toolbarContributions.map(contrib => (
+              <button
+                key={contrib.id}
+                onClick={contrib.onClick}
+                className="px-2 py-1 text-sm bg-gray-50 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+                title={contrib.label}
+              >
+                {contrib.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
       <div className="flex-1" />
 
-      {/* Undo/Redo */}
       <div className="flex items-center gap-1">
+        <button
+          onClick={onShowPlugins}
+          className="px-2 py-1 text-sm bg-purple-50 text-purple-700 rounded hover:bg-purple-100 transition-colors"
+        >
+          🧩 {t('toolbar.plugins')}
+        </button>
+        <div className="w-px h-6 bg-gray-300 mx-2" />
         <button onClick={handleUndo} disabled={!canUndo}
           className="px-2 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-40"
-          title="Undo (Ctrl+Z)">
-          ↩ Undo
+          title="Ctrl+Z">
+          ↩ {t('toolbar.undo')}
         </button>
         <button onClick={handleRedo} disabled={!canRedo}
           className="px-2 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-40"
-          title="Redo (Ctrl+Y)">
-          ↪ Redo
+          title="Ctrl+Y">
+          ↪ {t('toolbar.redo')}
         </button>
       </div>
     </div>

@@ -91,6 +91,12 @@ export class FreehandPlugin implements IPlugin {
   id = 'freehand';
   name = 'Freehand';
   version = '1.0.0';
+  metadata = {
+    description: 'Draw freely on the canvas with configurable brushes',
+    author: 'CanvasMind',
+    icon: '✏️',
+    category: 'core' as const,
+  };
   private ctx!: PluginContext;
   private active = false;
   currentPoints: number[] = [];

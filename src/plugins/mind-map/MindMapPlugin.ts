@@ -143,6 +143,12 @@ export class MindMapPlugin implements IPlugin {
   id = 'mind-map';
   name = 'Mind Map';
   version = '1.0.0';
+  metadata = {
+    description: 'Create and organize hierarchical mind maps',
+    author: 'CanvasMind',
+    icon: '🧠',
+    category: 'core' as const,
+  };
   private ctx!: PluginContext;
   private active = false;
 

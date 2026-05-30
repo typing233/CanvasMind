@@ -131,6 +131,12 @@ export class FlowchartPlugin implements IPlugin {
   id = 'flowchart';
   name = 'Flowchart';
   version = '1.0.0';
+  metadata = {
+    description: 'Design flowcharts with rectangles, diamonds, and arrows',
+    author: 'CanvasMind',
+    icon: '📊',
+    category: 'core' as const,
+  };
   private ctx!: PluginContext;
   private active = false;
 

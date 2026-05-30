@@ -1,4 +1,4 @@
-import { CanvasNode, DEFAULT_NODE_STYLE, DEFAULT_EDGE_STYLE, CanvasEdge } from '../core/data-model/types';
+import { CanvasNode, CanvasEdge, DEFAULT_NODE_STYLE, DEFAULT_EDGE_STYLE } from '../core/data-model/types';
 import { nanoid } from 'nanoid';
 
 interface MdNode {
@@ -15,7 +15,13 @@ export interface ConversionResult {
   syncMap: Map<string, { lineStart: number; lineEnd: number }>;
 }
 
-export function markdownToMindMap(markdown: string): ConversionResult {
+export interface TreeNode {
+  id: string;
+  text: string;
+  children: TreeNode[];
+}
+
+export function parseMarkdownToTree(markdown: string): MdNode[] {
   const lines = markdown.split('\n');
   const rootNodes: MdNode[] = [];
   const stack: MdNode[] = [];
@@ -47,8 +53,7 @@ export function markdownToMindMap(markdown: string): ConversionResult {
       const depth = stack[stack.length - 1].depth + 1 + Math.floor(indent / 2);
       const node: MdNode = { text, depth, children: [], lineStart: i, lineEnd: i };
 
-      // Find appropriate parent based on indent
-      let parent = stack[stack.length - 1];
+      const parent = stack[stack.length - 1];
       if (parent.children.length > 0 && indent > 0) {
         const lastChild = parent.children[parent.children.length - 1];
         if (indent >= 2) {
@@ -61,6 +66,12 @@ export function markdownToMindMap(markdown: string): ConversionResult {
       }
     }
   }
+
+  return rootNodes;
+}
+
+export function markdownToMindMap(markdown: string): ConversionResult {
+  const rootNodes = parseMarkdownToTree(markdown);
 
   const nodes: CanvasNode[] = [];
   const edges: CanvasEdge[] = [];
@@ -137,4 +148,16 @@ export function mindMapToMarkdown(
   }
 
   return lines.join('\n');
+}
+
+export function buildTreeFromNodes(rootId: string, nodes: Record<string, CanvasNode>): TreeNode | null {
+  const node = nodes[rootId];
+  if (!node) return null;
+  return {
+    id: node.id,
+    text: (node.data.text as string) || '',
+    children: (node.children || [])
+      .map(cid => buildTreeFromNodes(cid, nodes))
+      .filter((n): n is TreeNode => n !== null),
+  };
 }

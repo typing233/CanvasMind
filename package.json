@@ -1,13 +1,32 @@
 {
   "name": "canvasmind",
-  "private": true,
-  "version": "0.0.0",
+  "version": "2.0.0",
+  "private": false,
   "type": "module",
+  "description": "Plugin-based whiteboard engine with mind maps, flowcharts, and extensible canvas",
+  "license": "MIT",
+  "keywords": [
+    "whiteboard",
+    "mind-map",
+    "flowchart",
+    "canvas",
+    "plugin",
+    "react",
+    "konva"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/canvasmind"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "preview": "vite preview",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",
@@ -20,8 +39,6 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-konva": "^19.2.4",
-    "remark-parse": "^11.0.0",
-    "unified": "^11.0.5",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -38,6 +55,7 @@
     "tailwindcss": "^4.3.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
-    "vite": "^8.0.12"
+    "vite": "^8.0.12",
+    "vitest": "^3.2.4"
   }
 }
